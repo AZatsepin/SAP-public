@@ -1,0 +1,102 @@
+ REPORT z_editable_salv_report.
+
+ CLASS lcl_grid_trick DEFINITION
+   FINAL
+   CREATE PUBLIC .
+
+   PUBLIC SECTION.
+     INTERFACES if_alv_rm_grid_friend . "important
+
+     DATA: spfli TYPE STANDARD TABLE OF spfli,
+           salv  TYPE REF TO cl_salv_table.
+
+     METHODS: create_salv.
+     METHODS: evh_after_refresh FOR EVENT after_refresh OF cl_gui_alv_grid IMPORTING sender.
+     METHODS: user_command      FOR EVENT if_salv_events_functions~added_function OF cl_salv_events_table IMPORTING e_salv_function.
+
+   PRIVATE SECTION.
+     DATA: handler_added TYPE abap_bool.
+ ENDCLASS.
+
+ CLASS lcl_grid_trick IMPLEMENTATION.
+   METHOD create_salv.
+     SELECT * UP TO 100 ROWS INTO CORRESPONDING FIELDS OF TABLE @spfli
+     FROM spfli.
+
+     cl_salv_table=>factory(
+       IMPORTING
+         r_salv_table   = salv
+       CHANGING
+         t_table        = spfli
+     ).
+
+     salv->set_screen_status(
+       EXPORTING
+         report        =     sy-repid
+         pfstatus      =     '100'
+         set_functions =     salv->c_functions_all
+     ).
+
+     DATA: lo_events  TYPE REF TO cl_salv_events_table.
+     lo_events = salv->get_event( ).
+     SET HANDLER user_command FOR lo_events.
+     "Setting handler for event after_refresh for all grids
+     SET HANDLER evh_after_refresh FOR ALL INSTANCES.
+
+     "just to triger handler
+     salv->refresh( ).
+
+     DATA(selections) = salv->get_selections( ).
+     selections->set_selection_mode(   if_salv_c_selection_mode=>cell  ). "Single row selection
+
+     salv->display( ).
+
+   ENDMETHOD.
+
+   METHOD evh_after_refresh.
+     CHECK handler_added EQ abap_false.
+
+     sender->get_frontend_fieldcatalog(
+       IMPORTING
+         et_fieldcatalog = DATA(fcat)    " Field Catalog
+     ).
+
+     "setting editable fields
+     ASSIGN fcat[ fieldname = 'CARRID' ] TO FIELD-SYMBOL(<fcat>).
+     IF sy-subrc EQ 0.
+       <fcat>-edit = abap_true.
+     ENDIF.
+
+     ASSIGN fcat[ fieldname = 'CITYFROM' ] TO <fcat>.
+     IF sy-subrc EQ 0.
+       <fcat>-edit = abap_true.
+     ENDIF.
+
+     sender->set_frontend_fieldcatalog( it_fieldcatalog = fcat ).
+     sender->register_edit_event(
+       EXPORTING
+         i_event_id = sender->mc_evt_modified    " Event ID
+     ).
+
+     sender->set_ready_for_input(
+         i_ready_for_input = 1
+     ).
+
+     handler_added = abap_true.
+     sender->refresh_table_display( ).
+
+   ENDMETHOD.
+
+   METHOD user_command.
+     IF e_salv_function EQ 'SAVE'.
+       UPDATE spfli FROM TABLE spfli.
+     ENDIF.
+   ENDMETHOD.
+
+ ENDCLASS.
+
+
+ START-OF-SELECTION.
+
+   DATA(output) = NEW lcl_grid_trick( ).
+   output->create_salv( ).
