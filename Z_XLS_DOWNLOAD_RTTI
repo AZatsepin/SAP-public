@@ -1,0 +1,62 @@
+*&---------------------------------------------------------------------*
+*& Report  Z_XLS_DOWNLOAD_RTTI
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+REPORT  z_xls_download_rtti.
+
+PARAMETERS p_name TYPE se16n_tab .
+
+START-OF-SELECTION.
+
+  TYPES: BEGIN OF ty_name,
+           field_name TYPE scrtext_l,
+         END OF ty_name.
+  DATA:
+    lo_struct_descr TYPE REF TO cl_abap_structdescr,
+    lt_name         TYPE TABLE OF ty_name,
+    gtd             TYPE REF TO data.
+
+
+  FIELD-SYMBOLS: <ft> TYPE table.
+
+  lo_struct_descr ?= cl_abap_typedescr=>describe_by_name( p_name = p_name ).
+  DATA(gr) = cl_abap_tabledescr=>create( p_line_type =  lo_struct_descr ).
+
+  CREATE DATA gtd TYPE HANDLE gr.
+  ASSIGN gtd->* TO <ft>.
+  SELECT * FROM (p_name) INTO TABLE  <ft>.
+  DATA(lt) = lo_struct_descr->get_components( ).
+  LOOP AT  lo_struct_descr->get_components( ) INTO DATA(wa_structure_field).
+    IF wa_structure_field-as_include IS INITIAL.
+      APPEND  VALUE #( field_name =  |{ CAST cl_abap_elemdescr( wa_structure_field-type )->get_ddic_field( )-scrtext_l }| ) TO lt_name.
+    ELSE.
+      PERFORM lv_struc USING wa_structure_field-type.
+    endif.
+
+    ENDLOOP.
+
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+*       BIN_FILESIZE          =
+        filename              = 'C:\temp\simple_test.XLS'
+*       FILETYPE              = 'ASC'
+        append                = 'X'
+        write_field_separator = 'X'
+      TABLES
+        data_tab              = <ft>
+        fieldnames            = lt_name.
+
+FORM lv_struc USING lv_type TYPE REF TO cl_abap_datadescr.
+  LOOP AT  CAST cl_abap_structdescr( lv_type )->get_components( ) INTO DATA(wa_str_incl).
+    IF wa_str_incl-as_include IS INITIAL.
+      APPEND  VALUE #( field_name =  |{ CAST cl_abap_elemdescr( wa_str_incl-type )->get_ddic_field( )-scrtext_l }| ) TO lt_name.
+    ELSE.
+      PERFORM lv_struc USING wa_str_incl-type.
+    ENDIF.
+  ENDLOOP.
+
+ENDFORM.
